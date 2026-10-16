@@ -1,0 +1,25 @@
+# Secrets — NEVER commit (this repo is public)
+.env
+kaggle.json
+*.key
+
+# Generated outputs and caches (stay on your PC)
+projects/
+cache/
+*.mp4
+*.wav
+*.mp3
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

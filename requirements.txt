@@ -1,0 +1,17 @@
+# Licences for every package are listed in docs/LICENCES.md
+# Install:  pip install -r requirements.txt
+
+# Core
+PyYAML>=6.0              # MIT
+python-dotenv>=1.0       # BSD-3-Clause
+tzdata>=2024.1           # Apache-2.0 (time zones on Windows, for quota day resets)
+
+# Stage 1 Research + all LLM stages
+google-api-python-client>=2.100   # Apache-2.0
+google-genai>=1.0                 # Apache-2.0
+
+# Tests
+pytest>=8.0              # MIT
+
+# Later stages add their packages here as they are built
+# (Kokoro, faster-whisper, librosa, Pillow, numpy, opencv, pytesseract, ...)

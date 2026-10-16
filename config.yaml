@@ -1,0 +1,78 @@
+# ─────────────────────────────────────────────────────────────
+#  Kids Video Studio — single config file
+#  Every stage reads its settings from here. Secrets (API keys)
+#  live in .env, NEVER in this file (the repo is public).
+# ─────────────────────────────────────────────────────────────
+
+project:
+  language: en                  # video language (English only for now)
+  audience_age: "2-4"
+  projects_dir: projects        # per-topic outputs (git-ignored)
+  cache_dir: cache              # API/model/asset cache (git-ignored)
+  seed: 1234                    # global seed: every random choice derives from this
+
+video:
+  width: 1920
+  height: 1080
+  fps: 30                       # always constant frame rate
+  shorts_version: false         # optional 9:16 cut (later)
+
+audio:
+  sample_rate: 48000
+  target_lufs: -14.0
+  true_peak_db: -1.0
+
+# Preview mode = fast, low-res test runs:  python studio.py --topic "..." --preview
+preview_overrides:
+  video:
+    width: 960
+    height: 540
+    fps: 30                     # keep 30 so timing logic is identical
+
+# ── Free-tier limits (daily). Check yours in Google Cloud / AI Studio. ──
+quotas:
+  # YouTube Data API default: 10,000 units/day, resets at midnight Pacific time.
+  youtube_units_per_day: 10000
+  # Keep this much YouTube quota untouched as a safety margin.
+  youtube_reserve_units: 500
+  # Gemini free-tier requests per day per model. Numbers change often —
+  # copy the real ones from https://aistudio.google.com (Usage / Rate limits).
+  gemini_requests_per_day:
+    default: 200
+  gemini_requests_per_minute:
+    default: 8
+
+retries:
+  attempts: 5
+  base_delay_s: 2.0
+  max_delay_s: 60.0
+
+gemini:
+  # Tried in order; if one is unavailable/over quota the next is used.
+  # Run `python studio.py doctor --online` to list models your key can use.
+  models: ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+  temperature: 0.7
+
+# ── Stage 1: Research (statistics & patterns only — never content) ──
+research:
+  region_code: US               # market to study ("IN" for India, etc.)
+  relevance_language: en
+  # {topic} is replaced by your topic. Each query costs 100 quota units per order.
+  query_templates:
+    - "{topic}"
+    - "{topic} song"
+    - "{topic} for kids"
+    - "{topic} for toddlers"
+    - "learn {topic}"
+    - "{topic} nursery rhyme"
+  search_orders: ["relevance", "viewCount"]
+  results_per_search: 50        # max 50 (one page)
+  max_videos: 250               # cap on unique videos analysed
+  min_age_days: 7               # ignore brand-new uploads (views/day unstable)
+  comment_videos: 15            # top videos (with comments enabled) to sample
+  comments_per_video: 20
+  cache_ttl_days: 30            # YouTube API policy: don't keep API data >30 days
+  llm_summary: true             # ask Gemini to turn the numbers into recommendations
+
+gates:
+  open_browser: true            # open the review page automatically
