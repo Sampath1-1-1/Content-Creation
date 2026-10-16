@@ -82,7 +82,9 @@ Run the tests too: `python -m pytest` → all should pass.
 3. **APIs & Services → Credentials → Create credentials → API key**. Copy it.
 4. Click the new key → under **API restrictions** choose **Restrict key** → tick **YouTube Data API v3** → **Save**. (So the key is useless for anything else if it ever leaks.)
 
-Again: no billing needed. The free allowance is 10,000 units/day; one research run uses about 1,200–1,500.
+Again: no billing needed. The free allowance is 10,000 units/day. One research run studies three markets
+(overall, US, India) and uses about 3,600–3,700 units, so you can research 2 topics a day.
+Re-running the same topic costs nothing (results are cached).
 
 ## 8. Put both keys in `.env`
 

@@ -35,6 +35,10 @@ def test_stage1_runs_offline_and_resumes():
         html = (out / "research_report.html").read_text(encoding="utf-8")
         assert "DEMO DATA" in html
         assert ctx.quota.used("youtube") == 0  # fixture mode never touches the API
+        assert rep["regions"] == ["GLOBAL", "US", "IN"]
+        assert set(rep["by_region"]) == {"GLOBAL", "US", "IN"}
+        assert all(r["enough_data"] for r in rep["by_region"].values())
+        assert "Markets compared" in html
 
         # second run: stage is skipped (resume), files untouched
         mtime = (out / "research.json").stat().st_mtime

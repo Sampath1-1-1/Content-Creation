@@ -104,3 +104,11 @@ def test_queries_and_cost_estimate():
     qs = build_queries("numbers 1 to 10", ["{topic}", "{topic}  song", "{topic}"])
     assert qs == ["numbers 1 to 10", "numbers 1 to 10 song"]
     assert estimate_units(6, 2, 250, 15) == 6 * 2 * 100 + 5 + 5 + 15
+    assert estimate_units(6, 2, 400, 15, n_regions=3) == 6 * 2 * 3 * 100 + 8 + 8 + 15
+
+
+def test_region_list():
+    from studio.stages.s1_research import region_list
+    assert region_list({"regions": ["global", "US", "in", "US"]}) == ["GLOBAL", "US", "IN"]
+    assert region_list({"region_code": "IN"}) == ["IN"]   # old config style still works
+    assert region_list({}) == ["GLOBAL"]

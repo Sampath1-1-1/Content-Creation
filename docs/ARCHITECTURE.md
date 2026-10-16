@@ -9,6 +9,8 @@ with three human approval gates. 100% free, CPU-only laptop, commercial-use lice
 - **Language:** English only (YouTube auto-dubbing can add other languages to the *speech* later;
   music-only parts are not dubbed, so videos include real spoken teaching).
 - **Audience:** ages 2–4. **Goal:** monetisation (so every video has a distinct story).
+- **Markets researched:** overall (no country filter), US and India — compared side by side, combined for decisions
+  (`research.regions` in config.yaml; ~3,600 YouTube units per topic).
 - **Format and voice:** decided from Stage 1 research; voice chosen by ear from 3–4 Kokoro samples at Gate 1.
 - **Cast:** one teacher + **5 children** (different silhouettes, colours, a pair of glasses; mixed genders and
   skin tones). Each video features the teacher + 1–2 rotating "star" children; whole class only in intro/outro.

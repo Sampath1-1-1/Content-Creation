@@ -41,6 +41,10 @@ def headline_findings(report: dict) -> list[str]:
         trend = "longer videos tend to do better" if rho > 0.2 else (
             "shorter videos tend to do better" if rho < -0.2 else "length barely matters on its own")
         out.append(f"Length vs views/day correlation: {rho:+.2f} — {trend}.")
+    regions = report.get("regions") or []
+    if len(regions) > 1:
+        out[0] = (f"Analysed {s['usable_videos']} videos from {s['distinct_channels']} channels "
+                  f"across markets: {', '.join('Overall' if r == 'GLOBAL' else r for r in regions)}.")
     if s.get("made_for_kids_share") is not None:
         out.append(f"{_pct(s['made_for_kids_share'])} are marked Made for Kids "
                    f"(comments enabled on {_pct(s['engagement']['share_with_comments_enabled'])}).")
@@ -61,6 +65,10 @@ def write_markdown(report: dict, path: Path) -> None:
     if report["data_source"] != "youtube_api":
         lines += ["> ⚠️ DEMO DATA — synthetic sample, not real YouTube videos.", ""]
     lines += ["## Headline findings (measured)", ""] + [f"- {x}" for x in report["headline_findings"]] + [""]
+    rrows = _region_rows(report)
+    if rrows:
+        lines += ["## Markets compared (measured)", "", "| " + " | ".join(_REGION_HEAD) + " |",
+                  "|" + "---|" * len(_REGION_HEAD)] + ["| " + " | ".join(r) + " |" for r in rrows] + [""]
     if s.get("enough_data"):
         lines += ["## Recommended length (measured)", "",
                   f"**{_mmss(report['recommendations']['length_s'][0])} – {_mmss(report['recommendations']['length_s'][1])}**", "",
@@ -118,6 +126,12 @@ def write_html(report: dict, path: Path) -> None:
         parts.append("<p class='warn'>⚠️ DEMO DATA — synthetic sample, not real YouTube videos.</p>")
     parts.append("<h2>Headline findings <span class='tag'>measured</span></h2><div class='card'><ul>"
                  + "".join(f"<li>{e(x)}</li>" for x in report["headline_findings"]) + "</ul></div>")
+    rrows = _region_rows(report)
+    if rrows:
+        parts.append("<h2>Markets compared <span class='tag'>measured</span></h2><div class='card wrap'><table><tr>"
+                     + "".join(f"<th>{e(h)}</th>" for h in _REGION_HEAD) + "</tr>"
+                     + "".join("<tr>" + "".join(f"<td>{e(c)}</td>" for c in r) + "</tr>" for r in rrows)
+                     + "</table><div class='meta'>Everything below combines all markets.</div></div>")
     if s.get("enough_data"):
         lo, hi = report["recommendations"]["length_s"]
         parts.append(f"<h2>Recommended length <span class='tag'>measured</span></h2><div class='card'>"
@@ -169,9 +183,46 @@ def write_html(report: dict, path: Path) -> None:
     path.write_text("".join(parts), encoding="utf-8")
 
 
+def region_snapshot(summary: dict) -> dict[str, Any]:
+    """The few numbers worth comparing between markets."""
+    if not summary.get("enough_data"):
+        return {"enough_data": False, "usable_videos": summary.get("usable_videos", 0)}
+    lt = summary["duration"]["long_form_top"]
+    return {
+        "enough_data": True,
+        "usable_videos": summary["usable_videos"],
+        "recommended_length_s": [lt["p25_s"], lt["p75_s"]],
+        "median_top_length_s": lt["median_s"],
+        "shorts_share": summary["duration"]["shorts_share"],
+        "made_for_kids_share": summary.get("made_for_kids_share"),
+        "median_vpd_top": summary["views_per_day"]["median_top"],
+        "top_uploaded_last_year": summary["freshness"]["share_of_top_uploaded_last_year"],
+        "top5_channels_share": summary["market"]["top5_channels_share_of_views"],
+        "best_title_patterns": [f["feature"] for f in summary["title"]["feature_lift"][:3]],
+    }
+
+
+def _region_rows(report: dict) -> list[list[str]]:
+    rows = []
+    for name, s in (report.get("by_region") or {}).items():
+        label = "Overall (no country filter)" if name == "GLOBAL" else name
+        if not s.get("enough_data"):
+            rows.append([label, str(s.get("usable_videos", 0)), "not enough data", "–", "–", "–", "–"])
+            continue
+        lo, hi = s["recommended_length_s"]
+        rows.append([label, str(s["usable_videos"]), f"{_mmss(lo)}–{_mmss(hi)}", _num(s["median_vpd_top"]),
+                     _pct(s["shorts_share"]), _pct(s["top_uploaded_last_year"]), _pct(s["top5_channels_share"])])
+    return rows
+
+
+_REGION_HEAD = ["Market", "Videos", "Best length (top 25%)", "Top views/day", "Shorts",
+                "Top from last year", "Top-5 channel share"]
+
+
 def build_report(*, topic: str, generated_at: str, data_source: str, queries: list[str], quota_used: int,
                  summary: dict, gaps: list[str], comments: dict | None, inferred: dict,
-                 llm: dict | None, reference_top: list[dict]) -> dict[str, Any]:
+                 llm: dict | None, reference_top: list[dict], regions: list[str] | None = None,
+                 by_region: dict | None = None) -> dict[str, Any]:
     rec_len = None
     if summary.get("enough_data"):
         lt = summary["duration"]["long_form_top"]
@@ -181,6 +232,8 @@ def build_report(*, topic: str, generated_at: str, data_source: str, queries: li
         "generated_at": generated_at,
         "data_source": data_source,
         "queries": queries,
+        "regions": regions or [],
+        "by_region": by_region or {},
         "quota_used_units": quota_used,
         "measured": summary,
         "gaps": gaps,

@@ -80,6 +80,8 @@ def main(seed: int = 7) -> None:
     data = {
         "_note": "SYNTHETIC demo data — not real YouTube videos.",
         "searches": {"_default": ids},
+        # overlapping but different result sets per market, like real searches
+        "searches_by_region": {"GLOBAL": ids, "US": ids[:90], "IN": ids[50:]},
         "videos": videos,
         "channels": channels,
         "comments": comments,

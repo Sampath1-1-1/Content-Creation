@@ -112,12 +112,13 @@ class YouTubeResearchClient:
         return data
 
     # ── public methods ──
-    def search_ids(self, query: str, order: str, max_results: int, region: str, language: str) -> list[str]:
-        data = self._call("search", {
-            "part": "id", "q": query, "type": "video", "order": order,
-            "maxResults": min(50, max_results), "regionCode": region,
-            "relevanceLanguage": language, "safeSearch": "strict",
-        })
+    def search_ids(self, query: str, order: str, max_results: int, region: str | None,
+                   language: str) -> list[str]:
+        params = {"part": "id", "q": query, "type": "video", "order": order,
+                  "maxResults": min(50, max_results), "relevanceLanguage": language, "safeSearch": "strict"}
+        if region and region.upper() != "GLOBAL":
+            params["regionCode"] = region.upper()
+        data = self._call("search", params)
         return [it["id"]["videoId"] for it in data.get("items", []) if it.get("id", {}).get("videoId")]
 
     def videos(self, ids: list[str]) -> list[dict]:
@@ -158,8 +159,10 @@ class FixtureYouTubeClient:
     def __init__(self, fixture_path: Path):
         self.data: dict[str, Any] = json.loads(Path(fixture_path).read_text(encoding="utf-8"))
 
-    def search_ids(self, query: str, order: str, max_results: int, region: str, language: str) -> list[str]:
-        ids = self.data["searches"].get(query.lower(), self.data["searches"].get("_default", []))
+    def search_ids(self, query: str, order: str, max_results: int, region: str | None,
+                   language: str) -> list[str]:
+        by_region = self.data.get("searches_by_region", {})
+        ids = by_region.get((region or "GLOBAL").upper()) or self.data["searches"].get("_default", [])
         if order == "viewCount":
             views = {v["id"]: int(v["statistics"].get("viewCount", 0)) for v in self.data["videos"]}
             ids = sorted(ids, key=lambda i: -views.get(i, 0))

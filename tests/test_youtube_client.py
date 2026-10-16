@@ -64,6 +64,9 @@ def test_search_spends_quota_once_then_uses_cache():
         assert c.quota.used("youtube") == 100
         c.search_ids("numbers", "relevance", 50, "US", "en")
         assert len(fake.calls) == 1 and c.quota.used("youtube") == 100  # cached: free
+        assert fake.calls[0][1]["regionCode"] == "US"
+        c.search_ids("numbers", "relevance", 50, "GLOBAL", "en")
+        assert "regionCode" not in fake.calls[-1][1]  # overall = no country filter
 
 
 def test_stops_before_call_when_quota_would_run_out():

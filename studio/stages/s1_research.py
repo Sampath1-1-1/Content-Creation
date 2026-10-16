@@ -38,8 +38,20 @@ def build_queries(topic: str, templates: list[str]) -> list[str]:
     return out
 
 
-def estimate_units(n_queries: int, n_orders: int, max_videos: int, comment_videos: int) -> int:
-    searches = n_queries * n_orders * UNIT_COST["search"]
+def region_list(rc: dict) -> list[str]:
+    """Markets to study. 'GLOBAL' means no country filter. Old configs used region_code."""
+    regions = rc.get("regions") or [rc.get("region_code", "GLOBAL")]
+    out = []
+    for r in regions:
+        r = str(r).strip().upper()
+        if r and r not in out:
+            out.append(r)
+    return out or ["GLOBAL"]
+
+
+def estimate_units(n_queries: int, n_orders: int, max_videos: int, comment_videos: int,
+                   n_regions: int = 1) -> int:
+    searches = n_queries * n_orders * n_regions * UNIT_COST["search"]
     video_batches = -(-max_videos // 50)
     channel_batches = video_batches  # at most one channel per video
     return searches + video_batches + channel_batches + comment_videos
@@ -68,7 +80,7 @@ def _make_client(ctx: RunContext):
 
 
 def _llm_interpretation(ctx: RunContext, summary: dict, gaps: list[str], comments: dict | None,
-                        out_dir: Path) -> dict | None:
+                        out_dir: Path, by_region: dict | None = None) -> dict | None:
     if not ctx.cfg.get_path("research.llm_summary", True) or ctx.options.get("fixture"):
         return None
     if not get_secret("GEMINI_API_KEY", required=False):
@@ -81,6 +93,8 @@ def _llm_interpretation(ctx: RunContext, summary: dict, gaps: list[str], comment
     payload["frequent_title_words"] = [w["word"] for w in summary["title"]["common_words_in_top_titles"]]
     payload["gaps_found"] = gaps
     payload["comment_signals"] = (comments or {}).get("share_mentioning")
+    if by_region:
+        payload["by_market"] = by_region  # GLOBAL = no country filter; US; IN = India
     prompt = f"""You are a children's media researcher helping plan an ORIGINAL educational video
 for ages {ctx.cfg.get_path('project.audience_age', '2-4')} about: "{ctx.topic}".
 
@@ -100,6 +114,7 @@ Reply with JSON only, using exactly these keys:
   "hook_ideas": ["...", "...", "..."],
   "title_style_advice": "... (patterns only — never copy titles)",
   "differentiation_opportunities": ["...", "...", "..."],
+  "market_differences": "how the markets in by_market differ, and one plan that works for all of them",
   "things_to_avoid": ["...", "..."],
   "confidence_notes": "what is measured vs guessed"
 }}"""
@@ -117,22 +132,30 @@ def run(ctx: RunContext) -> dict:
     max_videos = int(rc.get("max_videos", 250))
     comment_videos = int(rc.get("comment_videos", 15))
 
+    regions = region_list(rc)
     client, source = _make_client(ctx)
     used_before = ctx.quota.used("youtube")
     if source == "youtube_api":
-        est = estimate_units(len(queries), len(orders), max_videos, comment_videos)
-        log.info(f"  {len(queries)} queries × {len(orders)} orders · estimated cost ≤ {est} units "
-                 f"(cached results cost 0). Remaining today: {ctx.quota.remaining('youtube')}")
+        est = estimate_units(len(queries), len(orders), max_videos, comment_videos, n_regions=len(regions))
+        log.info(f"  {len(queries)} queries × {len(orders)} orders × {len(regions)} markets "
+                 f"({', '.join(regions)}) · estimated cost ≤ {est} units (cached results cost 0). "
+                 f"Remaining today: {ctx.quota.remaining('youtube')}")
 
-    # 1) search
+    # 1) search each market; every market gets a fair share of the video cap
+    per_region_cap = max(1, max_videos // len(regions))
+    region_ids: dict[str, list[str]] = {}
+    for region in regions:
+        found_ids: list[str] = []
+        for q in queries:
+            for order in orders:
+                found = client.search_ids(q, order, int(rc.get("results_per_search", 50)),
+                                          region, rc.get("relevance_language", "en"))
+                found_ids.extend(i for i in found if i not in found_ids)
+        region_ids[region] = found_ids[:per_region_cap]
+        log.info(f"  market {region}: {len(found_ids)} unique videos found, using {len(region_ids[region])}")
     ids: list[str] = []
-    for q in queries:
-        for order in orders:
-            found = client.search_ids(q, order, int(rc.get("results_per_search", 50)),
-                                      rc.get("region_code", "US"), rc.get("relevance_language", "en"))
-            ids.extend(i for i in found if i not in ids)
-            log.info(f"  search “{q}” ({order}): {len(found)} results · {len(ids)} unique so far")
-    ids = ids[:max_videos]
+    for region in regions:
+        ids.extend(i for i in region_ids[region] if i not in ids)
 
     # 2) metadata
     videos = client.videos(ids)
@@ -142,9 +165,18 @@ def run(ctx: RunContext) -> dict:
     records = [r for v in videos if (r := analysis.record_from_api(v, channels_by_id, now))]
     log.info(f"  Fetched metadata for {len(records)} videos from {len(channels_by_id)} channels.")
 
-    # 3) statistics
-    summary = analysis.summarize(records, min_age_days=float(rc.get("min_age_days", 7)))
+    # 3) statistics: overall (all markets combined) + each market separately
+    min_age = float(rc.get("min_age_days", 7))
+    summary = analysis.summarize(records, min_age_days=min_age)
     gaps = analysis.find_gaps(summary)
+    by_region = {}
+    if len(regions) > 1:
+        for region in regions:
+            wanted = set(region_ids[region])
+            by_region[region] = report.region_snapshot(
+                analysis.summarize([r for r in records if r["id"] in wanted], min_age_days=min_age))
+    # brand terms from every market go on the never-use list
+    summary["brand_terms"] = analysis.detect_brand_terms(records)
 
     # 4) comments (keyword counts only)
     comments = None
@@ -158,7 +190,8 @@ def run(ctx: RunContext) -> dict:
         del texts  # comment text is never written anywhere
 
     # 5) Gemini interpretation (optional)
-    llm = _llm_interpretation(ctx, summary, gaps, comments, out_dir) if summary.get("enough_data") else None
+    llm = (_llm_interpretation(ctx, summary, gaps, comments, out_dir, by_region)
+           if summary.get("enough_data") else None)
 
     # 6) report
     reference = [{"title": r["title"], "duration_s": r["duration_s"], "views_per_day": r["views_per_day"],
@@ -167,7 +200,8 @@ def run(ctx: RunContext) -> dict:
     rep = report.build_report(
         topic=ctx.topic, generated_at=now.isoformat(timespec="seconds"), data_source=source,
         queries=queries, quota_used=ctx.quota.used("youtube") - used_before, summary=summary, gaps=gaps,
-        comments=comments, inferred=INFERRED_GUIDANCE_2_TO_4, llm=llm, reference_top=reference)
+        comments=comments, inferred=INFERRED_GUIDANCE_2_TO_4, llm=llm, reference_top=reference,
+        regions=regions, by_region=by_region)
     json_p, md_p, html_p = _outputs(ctx)
     report.write_json(rep, json_p)
     report.write_markdown(rep, md_p)

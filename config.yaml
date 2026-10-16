@@ -55,7 +55,9 @@ gemini:
 
 # ── Stage 1: Research (statistics & patterns only — never content) ──
 research:
-  region_code: US               # market to study ("IN" for India, etc.)
+  # Markets to study. GLOBAL = no country filter (overall). Each market repeats
+  # every search, so 3 markets ≈ 3× the search cost (~3,600 units in total).
+  regions: ["GLOBAL", "US", "IN"]
   relevance_language: en
   # {topic} is replaced by your topic. Each query costs 100 quota units per order.
   query_templates:
@@ -67,7 +69,7 @@ research:
     - "{topic} nursery rhyme"
   search_orders: ["relevance", "viewCount"]
   results_per_search: 50        # max 50 (one page)
-  max_videos: 250               # cap on unique videos analysed
+  max_videos: 400               # cap on unique videos analysed (all markets together)
   min_age_days: 7               # ignore brand-new uploads (views/day unstable)
   comment_videos: 15            # top videos (with comments enabled) to sample
   comments_per_video: 20
