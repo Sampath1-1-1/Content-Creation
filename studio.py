@@ -24,8 +24,15 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-from studio.core.config import load_config, load_env  # noqa: E402
-from studio.core.errors import StudioError, friendly_from_exception  # noqa: E402
+try:
+    from studio.core.config import load_config, load_env  # noqa: E402
+    from studio.core.errors import StudioError, friendly_from_exception  # noqa: E402
+except ModuleNotFoundError as _exc:  # packages not installed yet
+    print(f"\n❌  Python package '{_exc.name}' is not installed.\n"
+          "👉  How to fix: make sure your prompt starts with (.venv) — if not, run\n"
+          "      .venv\\Scripts\\Activate.ps1   (PowerShell)  or  .venv\\Scripts\\activate  (cmd)\n"
+          "    then run:  pip install -r requirements.txt\n", file=sys.stderr)
+    sys.exit(1)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
